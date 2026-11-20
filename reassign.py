@@ -46,8 +46,9 @@ total = 0
 for chat in all_pages("/open-api/chats", 50, startDate=since):
     total += 1
     if os.environ.get("DEBUG"):
-        print(f"debug chat={chat['_id']} assignedId={chat.get('assignedManagerId')} "
-              f"assignedName={chat.get('assignedManagerName')} last={chat.get('lastMessageCreatedAt')}")
+        safe = {k: (v if k.lower().endswith(("id", "managername", "at", "status")) else type(v).__name__)
+                for k, v in chat.items()}
+        print("debug", safe)
     is_pusher = (chat.get("assignedManagerId") == PUSHER_ID
                  or chat.get("assignedManagerName") == PUSHER_NAME)
     if not is_pusher:
