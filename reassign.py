@@ -39,10 +39,18 @@ if not pusher:
 PUSHER_ID, PUSHER_NAME = pusher["id"], pusher["user"]["fullname"]
 print(f"Пушер: {PUSHER_NAME} (id {PUSHER_ID})")
 
+print(f"Окно с: {(datetime.now(timezone.utc) - timedelta(minutes=WINDOW_MIN)).isoformat()}")
 since = (datetime.now(timezone.utc) - timedelta(minutes=WINDOW_MIN)).isoformat()
 checked = moved = 0
+total = 0
 for chat in all_pages("/open-api/chats", 50, startDate=since):
-    if chat.get("assignedManagerId") != PUSHER_ID:
+    total += 1
+    if os.environ.get("DEBUG"):
+        print(f"debug chat={chat['_id']} assignedId={chat.get('assignedManagerId')} "
+              f"assignedName={chat.get('assignedManagerName')} last={chat.get('lastMessageCreatedAt')}")
+    is_pusher = (chat.get("assignedManagerId") == PUSHER_ID
+                 or chat.get("assignedManagerName") == PUSHER_NAME)
+    if not is_pusher:
         continue
     checked += 1
     msgs = req("GET", f"/open-api/chats/{chat['_id']}/messages", params={"limit": 50})["data"]
@@ -53,6 +61,7 @@ for chat in all_pages("/open-api/chats", 50, startDate=since):
     if prev:
         req("PUT", f"/open-api/chats/{chat['_id']}", json={"assignedManagerId": name_to_id[prev]})
         moved += 1
-        print(f"{chat.get('userName')}: вернули на {prev}")
+        print(f"чат {chat['_id']}: вернули на {prev}")
 
+print(f"Чатов за окно: {total}")
 print(f"Чатов у пушера: {checked}, возвращено: {moved}")
