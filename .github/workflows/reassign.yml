@@ -24,3 +24,5 @@ jobs:
         env:
           SITNIKS_TOKEN: ${{ secrets.SITNIKS_TOKEN }}
           PUSHER_EMAIL: ${{ secrets.PUSHER_EMAIL }}
+          DEBUG: ${{ inputs.debug }}
+          WINDOW_MIN: ${{ inputs.window || '15' }}
