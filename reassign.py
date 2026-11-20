@@ -1,11 +1,11 @@
-"""Возвращает чат в Sitniks прежнему менеджеру, если ответственным стал пушер."""
-import os, time, requests
+"""Возвращает чат в Sitniks прежнему менеджеру, если ответственной стала пушер."""
+import os, time, collections, requests
 from datetime import datetime, timedelta, timezone
 
 BASE = "https://crm.sitniks.com"
 TOKEN = os.environ["SITNIKS_TOKEN"]
 PUSHER_EMAIL = os.environ["PUSHER_EMAIL"].strip().lower()
-WINDOW_MIN = int(os.environ.get("WINDOW_MIN", "15"))
+WINDOW_MIN = int(os.environ.get("WINDOW_MIN") or "15")
 H = {"Authorization": f"Bearer {TOKEN}"}
 
 
@@ -32,43 +32,36 @@ def all_pages(path, limit, **params):
 
 
 managers = list(all_pages("/open-api/managers", 100))
-name_to_id = {m["user"]["fullname"]: m["id"] for m in managers}
+by_name = collections.defaultdict(list)
+for m in managers:
+    by_name[m["user"]["fullname"]].append(m["id"])
 pusher = next((m for m in managers if (m["user"].get("email") or "").lower() == PUSHER_EMAIL), None)
 if not pusher:
     raise SystemExit(f"Менеджер с почтой {PUSHER_EMAIL} не найден")
-PUSHER_ID, PUSHER_NAME = pusher["id"], pusher["user"]["fullname"]
-if os.environ.get("DEBUG"):
-    for m in managers:
-        print("debug manager", m["id"], m["user"].get("fullname"),
-              {k: v for k, v in m.items() if k not in ("user",)},
-              {k: v for k, v in m["user"].items() if k.lower().endswith("id")})
-    raise SystemExit(0)
-print(f"Пушер: {PUSHER_NAME} (id {PUSHER_ID})")
+PUSHER_NAME = pusher["user"]["fullname"]
+print(f"Пушер: {PUSHER_NAME}, окно {WINDOW_MIN} мин")
 
-print(f"Окно с: {(datetime.now(timezone.utc) - timedelta(minutes=WINDOW_MIN)).isoformat()}")
 since = (datetime.now(timezone.utc) - timedelta(minutes=WINDOW_MIN)).isoformat()
-checked = moved = 0
-total = 0
+stats = collections.Counter()
 for chat in all_pages("/open-api/chats", 50, startDate=since):
-    total += 1
-    if os.environ.get("DEBUG"):
-        safe = {k: (v if k.lower().endswith(("id", "managername", "at", "status")) else type(v).__name__)
-                for k, v in chat.items()}
-        print("debug", safe)
-    is_pusher = (chat.get("assignedManagerId") == PUSHER_ID
-                 or chat.get("assignedManagerName") == PUSHER_NAME)
-    if not is_pusher:
+    # ID в списке чатов из другой нумерации, чем /managers, поэтому сверяем по имени
+    if chat.get("assignedManagerName") != PUSHER_NAME:
         continue
-    checked += 1
+    stats["у пушера"] += 1
     msgs = req("GET", f"/open-api/chats/{chat['id']}/messages", params={"limit": 50})["data"]
     msgs.sort(key=lambda m: m["createdAt"], reverse=True)
     prev = next((m["managerName"] for m in msgs
-                 if m.get("managerName") and m["managerName"] != PUSHER_NAME
-                 and m["managerName"] in name_to_id), None)
-    if prev:
-        req("PUT", f"/open-api/chats/{chat['id']}", json={"assignedManagerId": name_to_id[prev]})
-        moved += 1
-        print(f"чат {chat['id']}: вернули на {prev}")
+                 if m.get("managerName") and m["managerName"] != PUSHER_NAME), None)
+    if not prev:
+        stats["нет прежнего менеджера"] += 1
+        continue
+    ids = by_name.get(prev, [])
+    if len(ids) != 1:
+        stats["имя не уникально или не найдено"] += 1
+        print(f"чат {chat['id']}: пропуск, менеджеров с именем '{prev}': {len(ids)}")
+        continue
+    req("PUT", f"/open-api/chats/{chat['id']}", json={"assignedManagerId": ids[0]})
+    stats["возвращено"] += 1
+    print(f"чат {chat['id']}: вернули на {prev}")
 
-print(f"Чатов за окно: {total}")
-print(f"Чатов у пушера: {checked}, возвращено: {moved}")
+print("Итог:", dict(stats) or "чатов у пушера нет")

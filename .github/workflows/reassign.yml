@@ -4,12 +4,6 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
-      debug:
-        type: string
-        default: ""
-      script:
-        type: string
-        default: "reassign.py"
       window:
         type: string
         default: "15"
@@ -23,9 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install requests
-      - run: python ${{ inputs.script || 'reassign.py' }}
+      - run: python reassign.py
         env:
           SITNIKS_TOKEN: ${{ secrets.SITNIKS_TOKEN }}
           PUSHER_EMAIL: ${{ secrets.PUSHER_EMAIL }}
-          DEBUG: ${{ inputs.debug }}
           WINDOW_MIN: ${{ inputs.window || '15' }}
