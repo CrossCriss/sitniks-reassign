@@ -7,6 +7,9 @@ on:
       debug:
         type: string
         default: ""
+      script:
+        type: string
+        default: "reassign.py"
       window:
         type: string
         default: "15"
@@ -20,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install requests
-      - run: python reassign.py
+      - run: python ${{ inputs.script || 'reassign.py' }}
         env:
           SITNIKS_TOKEN: ${{ secrets.SITNIKS_TOKEN }}
           PUSHER_EMAIL: ${{ secrets.PUSHER_EMAIL }}
